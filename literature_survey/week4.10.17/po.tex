@@ -1,0 +1,185 @@
+\documentclass{article}[11pt]
+\textheight 8.5in
+\usepackage{graphicx}
+\usepackage{float}%for forcing position of figs
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+\begin{center}
+Siddharthan Rajasekaran\\
+Week of 4/2/2017 - 4/9/2017
+\end{center}
+
+\section{Summary of Discussions}
+In this report we will summarize Policy Optimization methods based on Policy Gradients. We will look at how they can be used in the context of LfD.  
+
+\section{Papers read}
+We will discuss many methods that find the gradient of the utility. utility is defined as the cumulative reward that we get by following a policy $\pi$ parametrized by $\theta$. Changing $theta$ allows us to move through the family of parametrized functions $\pi_\theta$. Hence utility can be directly written as a function of the parameters. 
+\begin{align*}
+U(\theta) = \sum_\tau P(\tau|\theta)R(\tau)
+\end{align*} where $\tau$ is the trajectory obtained by following policy $\pi_\theta$. There can be different trajectories obtained by following the same policy because of stochasticity in the system, the policy and the start state. 
+\subsection{Reinforce Algorithm}
+
+\cite{williams1992simple} gives a straight forward way of computing gradients of the utility, 
+\begin{align*}
+\nabla_\theta U(\theta) &= \sum_\tau \nabla_\theta P(\tau|\theta)R(\tau)\\
+&=\sum_\tau P(\tau|\theta) \frac{\nabla_\theta P(\tau|\theta)}{P(\tau|\theta)}R(\tau)\\
+&=\sum_\tau P(\tau|\theta) \nabla_\theta \ln P(\tau|\theta) R(\tau)\\
+&=\mathbb{E}\tau [ \nabla\theta \ln P(\tau|\theta) R(\tau)]\\
+\end{align*}
+
+The above can be approximated with $m$ samples of the path taken in real system. 
+
+
+
+\begin{align*}
+\nabla_\theta U(\theta) &\approx \hat{g} = \frac{1}{m} \sum_i \nabla_\theta \ln P(\tau^{(i)}|\theta) R(\tau^{(i)})\\
+\mathbb{E}[\hat{g}] &= \nabla_\theta U(\theta)
+\end{align*}
+
+Even with one rollout ($m$ = 1) we get an estimate of the gradient whose expectation has zero bias but has a very large variance. We will look at some of the ways to decrease this variance below.
+
+There is an alternative derivation of the above approximate gradient using importance sampling which will give us more insight.
+
+\begin{align*}
+U(\theta) &= \mathbb{E}_{\tau \sim \theta_{old}} \Big [\frac{P(\tau|\theta)}{P(\tau|\theta_{old})}R(\tau) \Big] \\
+\nabla_\theta U(\theta)&=\mathbb{E}_{\tau \sim \theta_{old}} \Big [\frac{\nabla_\theta P(\tau|\theta)}{P(\tau|\theta_{old})}R(\tau) \Big] \\
+\nabla_\theta U(\theta)|_{\theta=\theta_{old}}&=\mathbb{E}_{\tau \sim \theta_{old}} \Big [\frac{\nabla_\theta P(\tau|\theta)|_{\theta_{old}}}{P(\tau|\theta_{old})}R(\tau) \Big] \\
+&=\mathbb{E}_{\tau \sim \theta_{old}} \big [\nabla_\theta \ln P(\tau|\theta)|_{\theta_{old}}R(\tau) \big] \\
+\end{align*}
+
+This says that we only get the gradient near $\theta_{old}$ and motivates us to think about how large a step we can take along this gradient so that we are still improving the underlying non-linear function $U(\theta)$
+
+The most important property of the approximate gradient of $U(\theta)$ is that it exists if the family of parametrized policy that we pick is differentiable and has no restriction on the reward function. Hence reward function can be discontinuous or unknown, or sample space of paths is a discrete set. \\ \textit{Note: However, for policy gradient or the ES based methods, sparse rewards pose the problem of diminishing gradients in all directions. We will see how we might overcome this in the following sections. 
+}\\ \\
+
+First, let's look at what $\nabla_\theta \ln P(\tau^{(i)}|\theta)$ is,
+\begin{align*}
+\nabla_\theta \ln P(\tau^{(i)}|\theta) &= \nabla_\theta \ln \Big[\prod_{t=0}^TP(s_{t+1}^{(i)}|s_{t}^{(i)}, u_{t}^{(i)}) \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)}) \Big]\\
+&= \nabla_\theta \Big[\sum_{t=0}^T \ln P(s_{t+1}^{(i)}|s_{t}^{(i)}, u_{t}^{(i)}) + \sum_{t=0}^T \ln \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)}) \Big] \\
+&= \nabla_\theta \sum_{t=0}^T \ln \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)})
+\end{align*}
+
+
+Hence we see that the policy gradient is independent of the dynamics of the system. Which means that we do not need to have the dynamics model of the system as long as we have access to roll out the policy. 
+
+\subsubsection{Variance reduction}
+
+As we mentioned earlier, the estimate $\hat{g}$ has zero bias but a large variance. We will look at some methods to decrease the variance. 
+
+The approximate gradient $\hat{g} = \frac{1}{m} \sum_i \nabla_\theta \ln P(\tau^{(i)}|\theta) R(\tau^{(i)})$ takes a step towards positive rewards. Assume that out system has positive rewards only. Then, instead of decreasing the probability of smaller rewards, we basically increase the probabilities for all rewards but the increase is proportional to the magnitude of this reward. One way to actually decrease the probability of lesser rewards is to find the difference of the reward with a baseline $b$
+\begin{align*}
+\hat{g} &= \frac{1}{m} \sum_i \nabla_\theta \ln P(\tau^{(i)}|\theta) (R(\tau^{(i)}) - b)\\
+b &= \mathbb{E}[R(\tau)] \approx \frac{1}{m}\sum_{i=1}^m R(\tau^{(i)})
+\end{align*}
+
+
+It can be shown that adding this term $b$ still has zero bias on our policy gradient estimate. 
+
+\begin{align*}
+\mathbb{E}[\nabla_\theta \ln P(\tau|\theta)b] &= \sum_\tau P(\tau|\theta)\nabla_\theta \ln P(\tau|\theta)b\\
+&= \nabla_\theta \Big(\sum_{\tau}P(\tau|\theta)b\Big)\\
+&= \nabla_\theta 1 \cdot b = 0
+\end{align*} 
+
+This is true for any constant baseline $b$. In \cite{greensmith2004variance} they set $b = \frac{\sum_i(\nabla_\theta \ln P(\tau^{(i)} | \theta))^2 R(\tau^{(i)})}{\sum_i(\nabla_\theta \ln P(\tau^{(i)} | \theta))^2}$ for minimum variance which is a better choice than simply averaging the rewards in the roll outs. 
+
+We can use the fact that future actions do not affect the past rewards to decrease the variance further. 
+
+\begin{align}
+\hat{g} &= \frac{1}{m} \sum_{i=1}^m \Big( \sum_{t=0}^{T-1} \nabla_\theta \ln \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)})  \Big) \Big( \sum_{t=0}^{T-1}R(s_t^{(i)}, u_t^{(i)}) - b\Big)\\
+\label{time_variance_reduction}
+ &= \frac{1}{m} \sum_{i=1}^m  \sum_{t=0}^{T-1}\Bigg[ \nabla_\theta \ln \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)}) \Big( \sum_{k=t}^{T-1}R(s_k^{(i)}, u_k^{(i)}) - b(s_k^{(i)})\Big)\Bigg]
+\end{align}
+
+We are able to do this because we know ahead of time that, $\forall t$, the following holds
+\begin{align*}
+\lim_{m \to \infty} \sum_{i=1}^m  \sum_{t=0}^{T-1}\Bigg[ \nabla_\theta \ln \pi_\theta(u_{t}^{(i)}|s_{t}^{(i)}) \Big( \sum_{k=0}^{t-1}R(s_k^{(i)}, u_k^{(i)}) - b(s_k^{(i)})\Big)\Bigg] = 0 \ 
+\end{align*}
+Hence we explicitly set these terms to zero in \ref{time_variance_reduction} to reduce variance. The algorithm we currently have is the plain reinforce \cite{williams1992simple} with basic variance reduction. We still need to know how large a step we can take along this gradient to have a monotonic ascent guarantee. 
+
+\subsection{Approximately optimal approximate reinforcement learning}
+
+In \cite{kakade2002approximately}, they provide a way to find the size of the step to guarantee monotonic improvement. In this, the authors consider the surrogate objective $\eta_D(\pi) = \mathbb{E}_{s \sim D} [V_\pi(s)] =\mathbb{E}_{(s,a) \sim [d_{\pi,D}, \pi] } [V_\pi(s)] $ where $D$ is the probability distribution on initial states $s_0$ and $d_{\pi,D}$ is the state visitation frequency or occupancy under the policy $\pi$ and initial state distribution $D$. 
+
+The main problem in policy gradients is that gradients that improve $\eta_D(\pi)$ is insensitive to policy improvements in unlikely states. Hence we rather improve $\eta_\mu(\pi)$, where $\mu$ is the new exploratory restart distribution and assume that the policy optimization generalizes for $\eta_D(\pi)$. We will however not specify $\mu$ (both in $\eta$ and $d$) in the following sections. \\ \\
+Definitions:
+\begin{align}
+V_\pi(s_t) &= \mathbb{E}_{a_t, s_{t+1}, ...} \Bigg[ \sum_{l=0}^\infty \gamma^l r(s_{t+l})\Bigg]\\
+Q_\pi(s_t, a_t) &= \mathbb{E}_{s_{t+1}, ...} \Bigg[ \sum_{l=0}^\infty \gamma^l r(s_{t+l})\Bigg]\\
+A_\pi(s_t, a_t) &= Q_\pi(s_t, a_t) - V_\pi(s_t), \text{ where}
+\end{align}
+\begin{align*}
+a_t &\sim \pi(a_t|s_t), s_{t+1} \sim P(s_{t+1}|s_t,a_t) 
+\end{align*}
+
+It can be shown that 
+
+\begin{align}
+\eta(\tilde{\pi}) &= \eta(\pi) + \mathbb{E}_{s_0,a_0, ... \sim \tilde{\pi}} \Bigg[ \sum_{t=0}^\infty \gamma^t A_\pi(s_t,a_t) \Bigg]\\
+\label{policy_advantage}
+&= \eta(\pi) + \sum_s d_{\tilde{\pi}}(s) \sum_a\tilde{\pi}(a|s)A_\pi(s,a)
+\end{align}
+
+Here we have just rewritten the utility $U$ in terms of the advantage $A$ to determine whether the new policy $\tilde{\pi}$ is better than $\pi$ or not. Thus if $\sum_a\tilde{\pi}(a|s)A_\pi(s,a) >0, \ \ \forall s$, we are guaranteed to improve our policy. the complex dependency of $d_{\tilde{\pi}}(s)$ on $\tilde{\pi}$ (which is multiplied to the expectation of advantage function $A$  over all actions) makes it hard to directly optimize $\arg \max_{\tilde{\pi}}  \sum_s d_{\tilde{\pi}}(s) \sum_a\tilde{\pi}(a|s)A_\pi(s,a)$. Hence we locally approximate Eq. \ref{policy_advantage} to the first order using 
+
+\begin{align*}
+L_\pi(\tilde{\pi}) =  \eta(\pi) + \sum_s d_{\pi}(s) \sum_a\tilde{\pi}(a|s)A_\pi(s,a)
+\end{align*}
+
+This can also be seen in the importance sampling perspective as
+
+\begin{align}
+\label{surrogate_objective}
+L_\pi(\tilde{\pi}) =\eta(\pi) + \mathbb{E}_{s \sim d_{\pi},a \sim \pi} \Bigg[ \frac{\tilde{\pi}(a|s)}{\pi(a|s)} A_{\pi}(s,a) \Bigg]
+\end{align}
+
+We can see that, 
+
+\begin{align*}
+L_{\pi_{\theta_0}}(\pi_{\theta_0}) &= \eta (\pi_{\theta_0})\\
+\nabla_\theta L_{\pi_{\theta_0}}(\pi_{\theta})|_{\theta = \theta_0} &= \nabla_\theta \eta (\theta_0)|_{\theta = \theta_0}
+\end{align*}
+
+We now know that improving $L$ can improve $\eta$ locally. Let $\pi' = \arg \max_{\pi} L_{\pi_{old}} (\pi)$. In \cite{kakade2002approximately} they suggest to take s small step towards $\pi'$ by finding a policy mixture between $\pi_{old}$ and $\pi'$.
+
+\begin{align*}
+\pi_{new}(a|s) = (1-\alpha) \pi_{old}(a|s) + \alpha \pi'
+\end{align*} for some small $\alpha$. They set $\alpha = \frac{(1-\gamma)\mathbb{A}}{4R}$, where $\mathbb{A}$ is the advantage $\eta(\pi') - \eta(\pi_{old})$, and $R$ is the maximum reward in the problem.  The problem with the above formulation is, the policy mixture model is restrictive to only a small family of parametrized policy functions. Hence in TRPO, they add a constraint to the objective $L$ so that $\pi'$ is not far away from $\pi_{old}$
+
+\subsection{Trust Region Policy Optimization}
+The problem in \cite{schulman2015trust} is given as, 
+
+\begin{align}
+\label{importance_objective}
+&\max_{\tilde{\pi}} \ \ \ \mathbb{E}_{s \sim d_{\pi},a \sim \pi} \Bigg[ \frac{\tilde{\pi}(a|s)}{\pi(a|s)} Q_{\pi}(s,a) \Bigg]\\
+&\text{s.t.} \ \ \ \ \mathbb{E}_{s\sim d_\pi}[KL(\pi(a|s), \tilde{\pi}(a|s))] \le \delta
+\end{align}
+
+Note that we have replaced $A_\pi$ with $Q_\pi$ which only changes the objective by a constant ($\sum_a \tilde{\pi} A_pi = \sum_a \tilde{\pi}(a|s) Q_\pi(s,a) - V_\pi(s) \sum_a \tilde{\pi}(a|s)  = \sum_a \tilde{\pi}(a|s) Q_\pi(s,a) - V_\pi(s) \sum_a \tilde{\pi}(a|s)$)
+The above surrogate loss function, can be empirically estimated (in the conventional policy gradient fashion). 
+
+\subsubsection{Single path empirical estimate}
+Assume we collect a sequence of state action pairs starting from $s_0 \sim \mu$ to get $s_0,a_0, s_1,a_1, ..., s_T$. $Q_\pi(s,a)$ in Eq. \ref{importance_objective} is given by discounted sum of future rewards from that point to the end of the trajectory (for example, we might want to use DP).
+
+\subsubsection{Vine} 
+Here we sample $s_0 \sim \mu$ the simulate the system using $\pi_{\theta_{old}}$ to generate number of trajectories. We choose a subset of $N$ states along these trajectories. For each state $s_i$ in the subset, we sample $K$ actions according to $\pi(a|s_i)$. For continous problems $\pi(a|s_i)$ is taken as the policy from the previous iterations, while for the discrete problems, $\pi(a|s_i) = \text{uniform distribution }$ works well. For each sampled action $a$, we can find empirical $Q(s,a)$ using a short trajectory starting at $s,a$ following the policy $\pi(a|s_i)$
+
+Both in single path and Vine the Q values we obtain is a Monte-Carlo estimate of the Q value. 
+
+To solve the optimization problem, they use Conjugate gradient algorithm followed by line search which we will not discuss in this report.
+
+
+\section{Plan for next week}
+I am planning to read more about Policy Optimization methods and how each algorithm compares to each other before I go ahead to implement and try out their performance. 
+
+A thought in TRPO: Can we replace the KL divergence in TRPO with Kantorovich metric with $d$ related to difference of the Q functions by following the new policy? THis disctance metric may be hard to compute because of the coupling between the new Q values and the new policy. But if we can introduce an approximation for this, can we better the performance of TRPO?
+
+
+\section{Bibliography}
+
+\bibliographystyle{plain}
+\bibliography{bibfile}
+\end{document}
